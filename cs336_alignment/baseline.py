@@ -20,7 +20,7 @@ from tqdm import tqdm
 from vllm import LLM, SamplingParams
 from xopen import xopen
 
-from .drgrpo_grader import question_only_reward_fn
+from drgrpo_grader import question_only_reward_fn
 
 logger = logging.getLogger(__name__)
 
