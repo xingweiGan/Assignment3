@@ -1,8 +1,0 @@
-vllm
-xopen
-latex2sympy2_extended
-math_verify
-pylatexenc
-huggingface
-torch
-transformers

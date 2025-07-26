@@ -32,7 +32,7 @@ def load_r1_zero_prompt() -> str:
         return f.read().strip()
 
 
-def load_gsm8k_test_data(data_path: str = "/data/gsm8k/test.jsonl") -> List[dict]:
+def load_test_data(data_path: str = "/data/MATH/test.jsonl") -> List[dict]:
     """Load GSM8K test examples from jsonl file."""
     examples = []
     
@@ -57,7 +57,7 @@ def format_prompts(examples: List[dict], prompt_template: str) -> List[str]:
     prompts = []
     for example in examples:
         # Format the prompt by substituting the question
-        formatted_prompt = prompt_template.format(question=example["question"])
+        formatted_prompt = prompt_template.format(question=example["problem"])
         prompts.append(formatted_prompt)
     
     logger.info(f"Formatted {len(prompts)} prompts using r1_zero template")
@@ -263,17 +263,14 @@ def main():
     logger.info("Loading r1_zero prompt template...")
     prompt_template = load_r1_zero_prompt()
     
-    logger.info("Loading GSM8K test data...")
-    test_examples = load_gsm8k_test_data()
+    logger.info("Loading MATH test data...")
+    test_examples = load_test_data()
     
     # Format prompts
     prompts = format_prompts(test_examples, prompt_template)
     
     # Extract ground truth answers
-    ground_truths = [
-        extract_ground_truth_answer(example["answer"]) 
-        for example in test_examples
-    ]
+    ground_truths = [example["solution"]for example in test_examples]
     
     # Initialize vLLM model with Qwen 2.5 Math 1.5B
     model_name_or_path = os.getenv("MODEL_PATH", "Qwen/Qwen2.5-Math-1.5B-Instruct")
