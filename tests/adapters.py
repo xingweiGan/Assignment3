@@ -7,7 +7,7 @@ import torch
 from torch import Tensor
 from torch.utils.data import Dataset
 from transformers import PreTrainedTokenizerBase
-
+import torch.nn.functional as F
 
 def run_tokenize_prompt_and_output(
     prompt_strs: list[str],
@@ -149,9 +149,13 @@ def run_compute_group_normalized_rewards(
     raise NotImplementedError
 
 
+
 def run_compute_entropy(logits: torch.Tensor) -> torch.Tensor:
     """Get the entropy of the logits (i.e., entropy of the final dimension)."""
-    raise NotImplementedError
+    log_probs = torch.log_softmax(logits, dim=-1)   # stable
+    probs = torch.exp(log_probs)
+    entropy = -(probs * log_probs).sum(dim=-1)
+    return entropy
 
 
 def run_get_response_log_probs(
@@ -183,7 +187,25 @@ def run_get_response_log_probs(
                 we have not masked out the token indices corresponding to the prompt
                 or padding; that is done in the train loop.
     """
-    raise NotImplementedError
+    was_training = model.training
+    model.eval()
+    with torch.no_grad():
+        logits = model(input_ids=input_ids).logits                  # (B, L, V)
+        log_probs_all = F.log_softmax(logits, dim=-1)               # stable
+        # select log p(label_t | prefix ≤ t-1)
+        log_probs = torch.gather(log_probs_all, -1, labels.unsqueeze(-1)).squeeze(-1)  # (B, L)
+
+        out = {"log_probs": log_probs}
+        if return_token_entropy:
+            probs = torch.exp(log_probs_all)
+            token_entropy = -(probs * log_probs_all).sum(dim=-1)    # (B, L)
+            out["token_entropy"] = token_entropy
+
+    if was_training:
+        model.train()
+    return out
+
+
 
 
 def run_compute_naive_policy_gradient_loss(
