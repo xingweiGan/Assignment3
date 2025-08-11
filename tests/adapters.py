@@ -16,12 +16,10 @@ def run_tokenize_prompt_and_output(
 ) -> dict[str, Tensor]:
     """Tokenize the prompt and output strings, and construct a mask that is 1
     for the response tokens and 0 for other tokens (prompt or padding).
-
     Args:
         prompt_strs: list[str], the prompt strings.
         output_strs: list[str], the output strings.
         tokenizer: PreTrainedTokenizer, the tokenizer to use.
-
     Returns:
         dict[str, torch.Tensor]:
             "input_ids": torch.Tensor of shape (batch_size, max(prompt_and_output_lens) - 1):
@@ -31,7 +29,78 @@ def run_tokenize_prompt_and_output(
             "response_mask": torch.Tensor of shape (batch_size, max(prompt_and_output_lens) - 1):
                 a mask on the response tokens in `labels`.
     """
-    raise NotImplementedError
+    import torch
+    
+    batch_size = len(prompt_strs)
+    
+    # Tokenize prompts and outputs separately
+    prompt_tokens = []
+    output_tokens = []
+    
+    for prompt_str, output_str in zip(prompt_strs, output_strs):
+        # Tokenize prompt and output separately
+        prompt_tok = tokenizer(prompt_str, add_special_tokens=False, return_tensors="pt")["input_ids"].squeeze(0)
+        output_tok = tokenizer(output_str, add_special_tokens=False, return_tensors="pt")["input_ids"].squeeze(0)
+        
+        prompt_tokens.append(prompt_tok)
+        output_tokens.append(output_tok)
+    
+    # Concatenate prompt and output tokens for each example
+    concatenated_tokens = []
+    prompt_lens = []
+    
+    for prompt_tok, output_tok in zip(prompt_tokens, output_tokens):
+        # Concatenate prompt and output
+        full_sequence = torch.cat([prompt_tok, output_tok], dim=0)
+        concatenated_tokens.append(full_sequence)
+        prompt_lens.append(len(prompt_tok))
+    
+    # Find max length and pad sequences
+    max_len = max(len(seq) for seq in concatenated_tokens)
+    
+    # Create padded tensors
+    input_ids_list = []
+    response_masks = []
+    
+    for i, (full_seq, prompt_len) in enumerate(zip(concatenated_tokens, prompt_lens)):
+        seq_len = len(full_seq)
+        
+        # Pad sequence to max_len
+        PAD = tokenizer.pad_token_id  # for Qwen this is 151643
+        padded_seq = torch.full((max_len,), PAD, dtype=torch.long)
+        padded_seq[:seq_len] = full_seq
+        
+        # Build response mask in LABEL space (length max_len-1), boolean
+        label_mask = torch.zeros(max_len - 1, dtype=torch.bool)
+        start = max(prompt_len - 1, 0)   # first output token after shift
+        end   = max(seq_len - 1, 0)      # labels end at L-2
+        if start < end:
+            label_mask[start:end] = True
+        
+        input_ids_list.append(padded_seq)
+        response_masks.append(label_mask)
+    
+    input_ids_full = torch.stack(input_ids_list)      # (batch_size, max_len)
+    input_ids = input_ids_full[:, :-1]
+    labels    = input_ids_full[:, 1:]
+    response_mask = torch.stack(response_masks)       # (batch_size, max_len - 1), bool
+
+
+    return {
+        "input_ids": input_ids,
+        "labels": labels, 
+        "response_mask": response_mask
+    }
+
+
+
+
+
+
+
+
+
+
 
 
 def run_compute_group_normalized_rewards(
