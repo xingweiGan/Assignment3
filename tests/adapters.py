@@ -294,7 +294,33 @@ def run_sft_microbatch_train_step(
 ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
     """Compute the policy gradient loss and backprop its gradients for a microbatch.
     """
-    raise NotImplementedError
+    mask = response_mask.to(dtype=policy_log_probs.dtype)
+    nll = -policy_log_probs  # (B, T)
+
+    # choose denominator (if None, use number of valid tokens)
+    denom = mask.sum() if normalize_constant is None else normalize_constant
+
+    # masked normalized sum (scalar)
+    loss = run_masked_normalize(nll, mask, normalize_constant=denom)
+
+    # also average across batch and scale for grad accumulation
+    B = policy_log_probs.shape[0]
+    loss = loss / B / float(gradient_accumulation_steps)
+
+    loss.backward()
+
+    metadata = {
+        "num_response_tokens": mask.sum().detach(),
+        "batch_size": torch.tensor(B, device=policy_log_probs.device),
+        "normalize_constant": torch.as_tensor(denom, device=policy_log_probs.device).detach(),
+    }
+    return loss, metadata
+
+
+
+
+
+
 
     
 def run_grpo_microbatch_train_step(
@@ -358,7 +384,23 @@ def run_masked_normalize(
         torch.Tensor, the normalized sum, where masked elements
             (mask=0) don't contribute to the sum.
     """
-    raise NotImplementedError
+ # include only mask==1 (supports bool or 0/1 masks)
+    masked = tensor * mask.to(dtype=tensor.dtype)
+
+    # sum over the requested dimension (or all)
+    summed = masked.sum() if dim is None else masked.sum(dim=dim)
+
+    # divide by the provided constant
+    denom = torch.tensor(normalize_constant, dtype=summed.dtype, device=summed.device)
+    return summed / denom
+
+
+
+
+
+
+
+
 
 
 """
