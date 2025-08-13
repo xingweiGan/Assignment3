@@ -162,7 +162,7 @@ def run_get_response_log_probs(
     model: torch.nn.Module,
     input_ids: torch.Tensor,
     labels: torch.Tensor,
-    return_token_entropy: bool,
+    return_token_entropy: bool= False,
 ) -> torch.Tensor:
     """Get the conditional log-probs of the response given the prompt,
         and optionally the entropy of the next token predictions.
@@ -187,22 +187,17 @@ def run_get_response_log_probs(
                 we have not masked out the token indices corresponding to the prompt
                 or padding; that is done in the train loop.
     """
-    was_training = model.training
-    model.eval()
-    with torch.no_grad():
-        logits = model(input_ids=input_ids).logits                  # (B, L, V)
-        log_probs_all = F.log_softmax(logits, dim=-1)               # stable
-        # select log p(label_t | prefix ≤ t-1)
-        log_probs = torch.gather(log_probs_all, -1, labels.unsqueeze(-1)).squeeze(-1)  # (B, L)
+    logits = model(input_ids=input_ids).logits                  # (B, L, V)
+    log_probs_all = F.log_softmax(logits, dim=-1)               # stable
+    # select log p(label_t | prefix ≤ t-1)
+    log_probs = torch.gather(log_probs_all, -1, labels.unsqueeze(-1)).squeeze(-1)  # (B, L)
 
-        out = {"log_probs": log_probs}
-        if return_token_entropy:
-            probs = torch.exp(log_probs_all)
-            token_entropy = -(probs * log_probs_all).sum(dim=-1)    # (B, L)
-            out["token_entropy"] = token_entropy
+    out = {"log_probs": log_probs}
+    if return_token_entropy:
+        probs = torch.exp(log_probs_all)
+        token_entropy = -(probs * log_probs_all).sum(dim=-1)    # (B, L)
+        out["token_entropy"] = token_entropy
 
-    if was_training:
-        model.train()
     return out
 
 
@@ -307,7 +302,6 @@ def run_sft_microbatch_train_step(
     B = policy_log_probs.shape[0]
     loss = loss / B / float(gradient_accumulation_steps)
 
-    loss.backward()
 
     metadata = {
         "num_response_tokens": mask.sum().detach(),
